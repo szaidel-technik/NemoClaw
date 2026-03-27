@@ -33,7 +33,7 @@ resolve_release_tag() {
   # Query the GitHub releases API for the latest published release.
   local response tag
   response="$(curl -fsSL --max-time 10 \
-    https://api.github.com/repos/NVIDIA/NemoClaw/releases/latest 2>/dev/null)" || true
+    https://api.github.com/repos/szaidel-technik/NemoClaw/releases/latest 2>/dev/null)" || true
   tag="$(printf '%s' "$response" \
     | grep '"tag_name"' \
     | sed -E 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/' \
@@ -137,7 +137,7 @@ print_done() {
   printf "  %s$%s nemoclaw %s connect\n" "$C_GREEN" "$C_RESET" "$sandbox_name"
   printf "  %ssandbox@%s$%s openclaw tui\n" "$C_GREEN" "$sandbox_name" "$C_RESET"
   printf "\n"
-  printf "  ${C_BOLD}GitHub${C_RESET}  ${C_DIM}https://github.com/nvidia/nemoclaw${C_RESET}\n"
+  printf "  ${C_BOLD}GitHub${C_RESET}  ${C_DIM}https://github.com/szaidel-technik/nemoclaw${C_RESET}\n"
   printf "  ${C_BOLD}Docs${C_RESET}    ${C_DIM}https://docs.nvidia.com/nemoclaw/latest/${C_RESET}\n"
   printf "\n"
 }
@@ -146,8 +146,8 @@ usage() {
   printf "\n"
   printf "  ${C_BOLD}NemoClaw Installer${C_RESET}  ${C_DIM}v%s${C_RESET}\n\n" "$NEMOCLAW_VERSION"
   printf "  ${C_DIM}Usage:${C_RESET}\n"
-  printf "    curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash\n"
-  printf "    curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash -s -- [options]\n\n"
+  printf "    curl -fsSL https://raw.githubusercontent.com/szaidel-technik/NemoClaw/refs/heads/main/install.sh | bash\n"
+  printf "    curl -fsSL https://raw.githubusercontent.com/szaidel-technik/NemoClaw/refs/heads/main/install.sh | bash -s -- [options]\n\n"
   printf "  ${C_DIM}Options:${C_RESET}\n"
   printf "    --non-interactive    Skip prompts (uses env vars / defaults)\n"
   printf "    --version, -v        Print installer version and exit\n"
@@ -492,7 +492,7 @@ install_nemoclaw() {
     local nemoclaw_src="${HOME}/.nemoclaw/source"
     rm -rf "$nemoclaw_src"
     mkdir -p "$(dirname "$nemoclaw_src")"
-    spin "Cloning NemoClaw source" git clone --depth 1 --branch "$release_ref" https://github.com/NVIDIA/NemoClaw.git "$nemoclaw_src"
+    spin "Cloning NemoClaw source" git clone --depth 1 --branch "$release_ref" https://github.com/szaidel-technik/NemoClaw.git "$nemoclaw_src"
     spin "Preparing OpenClaw package" bash -c "$(declare -f info warn pre_extract_openclaw); pre_extract_openclaw \"\$1\"" _ "$nemoclaw_src" \
       || warn "Pre-extraction failed — npm install may fail if openclaw tarball is broken"
     spin "Installing NemoClaw dependencies" bash -c "cd \"$nemoclaw_src\" && npm install --ignore-scripts"
@@ -536,7 +536,7 @@ verify_nemoclaw() {
     return 0
   else
     warn "Could not locate the nemoclaw executable."
-    warn "Try running:  npm install -g git+https://github.com/NVIDIA/NemoClaw.git"
+    warn "Try running:  npm install -g git+https://github.com/szaidel-technik/NemoClaw.git"
   fi
 
   error "Installation failed: nemoclaw binary not found."
