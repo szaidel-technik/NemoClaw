@@ -8,8 +8,6 @@ network_policies:
     endpoints:
       - host: host.docker.internal
         access: full
-        allowed_ips:
-          - 192.168.65.254
     binaries:
       - { path: /usr/bin/curl }
       - { path: /usr/bin/python3 }
