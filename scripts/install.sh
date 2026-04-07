@@ -90,16 +90,16 @@ installer_version_for_display() {
 }
 
 # Resolve which Git ref to install from.
-# Priority: NEMOCLAW_INSTALL_TAG env var > "latest" tag.
+# Priority: NEMOCLAW_INSTALL_TAG env var > "main" branch.
 resolve_release_tag() {
   if [[ -n "${NEMOCLAW_INSTALL_REF:-}" ]]; then
     printf "%s" "${NEMOCLAW_INSTALL_REF}"
     return
   fi
   # Allow explicit override (for CI, pinning, or testing).
-  # Otherwise default to the "latest" tag, which we maintain to point at
-  # the commit we want everybody to install.
-  printf "%s" "${NEMOCLAW_INSTALL_TAG:-latest}"
+  # Otherwise default to "main" so fork installs work without requiring
+  # a synthetic "latest" branch/tag.
+  printf "%s" "${NEMOCLAW_INSTALL_TAG:-main}"
 }
 
 # ---------------------------------------------------------------------------
@@ -267,7 +267,7 @@ usage() {
   printf "    NEMOCLAW_NON_INTERACTIVE=1    Same as --non-interactive\n"
   printf "    NEMOCLAW_SANDBOX_NAME         Sandbox name to create/use\n"
   printf "    NEMOCLAW_RECREATE_SANDBOX=1   Recreate an existing sandbox\n"
-  printf "    NEMOCLAW_INSTALL_TAG         Git ref to install (default: latest release)\n"
+  printf "    NEMOCLAW_INSTALL_TAG         Git ref to install (default: main)\n"
   printf "    NEMOCLAW_PROVIDER             cloud | ollama | nim | vllm\n"
   printf "    NEMOCLAW_MODEL                Inference model to configure\n"
   printf "    NEMOCLAW_POLICY_MODE          suggested | custom | skip\n"
