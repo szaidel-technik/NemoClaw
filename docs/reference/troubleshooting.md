@@ -2,7 +2,9 @@
 title:
   page: "NemoClaw Troubleshooting Guide"
   nav: "Troubleshooting"
-description: "Diagnose and resolve common NemoClaw installation, onboarding, and runtime issues."
+description:
+  main: "Diagnose and resolve common NemoClaw installation, onboarding, and runtime issues."
+  agent: "Diagnoses and resolves common NemoClaw installation, onboarding, and runtime issues. Use when troubleshooting errors, debugging sandbox problems, or resolving setup failures."
 keywords: ["nemoclaw troubleshooting", "nemoclaw debug sandbox issues"]
 topics: ["generative_ai", "ai_agents"]
 tags: ["openclaw", "openshell", "troubleshooting", "nemoclaw"]
@@ -64,6 +66,12 @@ $ nvm use 22
 
 Then re-run the installer.
 
+### Image push fails with out-of-memory errors
+
+The sandbox image is approximately 2.4 GB compressed. During image push, the Docker daemon, k3s, and the OpenShell gateway run alongside the export pipeline, which buffers decompressed layers in memory. On machines with less than 8 GB of RAM, this combined usage can trigger the OOM killer.
+
+If you cannot add memory, configure at least 8 GB of swap to work around the issue at the cost of slower performance.
+
 ### Docker is not running
 
 The installer and onboard wizard require Docker to be running.
@@ -74,6 +82,15 @@ $ sudo systemctl start docker
 ```
 
 On macOS with Docker Desktop, open the Docker Desktop application and wait for it to finish starting before retrying.
+
+### macOS first-run failures
+
+The two most common first-run failures on macOS are missing developer tools and Docker connection errors.
+
+To avoid these issues, install the prerequisites in the following order before running the NemoClaw installer:
+
+1. Install Xcode Command Line Tools (`xcode-select --install`). These are needed by the installer and Node.js toolchain.
+2. Install and start a supported container runtime (Docker Desktop or Colima). Without a running runtime, the installer cannot connect to Docker.
 
 ### npm install fails with permission errors
 
@@ -95,7 +112,7 @@ If another process is already bound to this port, onboarding fails.
 Identify the conflicting process, verify it is safe to stop, and terminate it:
 
 ```console
-$ lsof -i :18789
+$ sudo lsof -i :18789
 $ kill <PID>
 ```
 
@@ -106,15 +123,17 @@ Then retry onboarding.
 
 ### Cgroup v2 errors during onboard
 
-On Ubuntu 24.04, DGX Spark, and WSL2, Docker may not be configured for cgroup v2 delegation.
-The onboard preflight check detects this and fails with a clear error message.
+Older NemoClaw releases relied on a Docker cgroup workaround on Ubuntu 24.04, DGX Spark, and WSL2.
+Current OpenShell releases handle that behavior themselves, so NemoClaw no longer requires a Spark-specific setup step.
 
-Run the Spark setup script to fix the Docker cgroup configuration, then retry onboarding:
+If onboarding reports that Docker is missing or unreachable, fix Docker first and retry onboarding:
 
 ```console
-$ sudo nemoclaw setup-spark
 $ nemoclaw onboard
 ```
+
+If you are using Podman, NemoClaw warns and continues, but OpenShell officially documents Docker-based runtimes only.
+If onboarding or sandbox lifecycle fails, switch to Docker Desktop, Colima, or Docker Engine and rerun onboarding.
 
 ### Invalid sandbox name
 
@@ -139,6 +158,22 @@ If neither is found, verify that Colima is running:
 
 ```console
 $ colima status
+```
+
+### Sandbox creation killed by OOM (exit 137)
+
+On systems with 8 GB RAM or less and no swap configured, the sandbox image push can exhaust available memory and get killed by the Linux OOM killer (exit code 137).
+
+NemoClaw automatically detects low memory during onboarding and prompts to create a 4 GB swap file.
+If this automatic step fails or you are using a custom setup flow, create swap manually before running `nemoclaw onboard`:
+
+```console
+$ sudo dd if=/dev/zero of=/swapfile bs=1M count=4096 status=none
+$ sudo chmod 600 /swapfile
+$ sudo mkswap /swapfile
+$ sudo swapon /swapfile
+$ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+$ nemoclaw onboard
 ```
 
 ## Runtime
@@ -177,19 +212,21 @@ Follow these steps to reconnect.
    $ nemoclaw <name> connect
    ```
 
-1. Start auxiliary services (if needed).
+1. Start host auxiliary services (if needed).
 
-   If you use the Telegram bridge or cloudflared tunnel, start them again:
+   If you use the cloudflared tunnel started by `nemoclaw start`, start it again:
 
    ```console
    $ nemoclaw start
    ```
 
+   Telegram, Discord, and Slack are handled by OpenShell-managed channel messaging configured at onboarding, not by a separate bridge process from `nemoclaw start`.
+
 :::{admonition} If the sandbox does not recover
 :class: warning
 
 If the sandbox remains missing after restarting the gateway, run `nemoclaw onboard` to recreate it.
-The wizard prompts for confirmation before destroying an existing sandbox. If you confirm, it **destroys and recreates** the sandbox — workspace files (SOUL.md, USER.md, IDENTITY.md, AGENTS.md, MEMORY.md, and daily memory notes) are lost.
+The wizard prompts for confirmation before destroying an existing sandbox. If you confirm, it **destroys and recreates** the sandbox. Workspace files (SOUL.md, USER.md, IDENTITY.md, AGENTS.md, MEMORY.md, and daily memory notes) are lost.
 Back up your workspace first by following the instructions at [Back Up and Restore](../workspace/backup-restore.md).
 :::
 
@@ -217,6 +254,15 @@ $ nemoclaw <name> status
 
 If the endpoint is correct but requests still fail, check for network policy rules that may block the connection.
 Then verify the credential and base URL for the provider you selected during onboarding.
+
+### `NEMOCLAW_DISABLE_DEVICE_AUTH=1` does not change an existing sandbox
+
+This is expected behavior.
+`NEMOCLAW_DISABLE_DEVICE_AUTH` is a build-time setting used when NemoClaw creates the sandbox image.
+Changing or exporting it later does not rewrite the baked `openclaw.json` inside an existing sandbox.
+
+If you need a different device-auth setting, rerun onboarding so NemoClaw rebuilds the sandbox image with the desired configuration.
+For the security trade-offs, refer to [Security Best Practices](../security/best-practices.md).
 
 ### Agent cannot reach an external host
 
