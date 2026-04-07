@@ -7,7 +7,6 @@ network_policies:
     name: local_host
     endpoints:
       - host: host.docker.internal
-        port: "*"
         access: full
         allowed_ips:
           - 192.168.65.254
