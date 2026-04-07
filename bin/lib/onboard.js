@@ -445,6 +445,33 @@ function exitOnboardFromPrompt() {
   process.exit(1);
 }
 
+function parseSandboxCreateArgsJson(rawValue = process.env.NEMOCLAW_SANDBOX_CREATE_ARGS_JSON) {
+  const raw = (rawValue || "").trim();
+  if (!raw) return [];
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    console.error("  NEMOCLAW_SANDBOX_CREATE_ARGS_JSON must be valid JSON.");
+    console.error('  Example: ["--forward","3000","--upload","/host/path:/sandbox/path"]');
+    process.exit(1);
+  }
+
+  if (!Array.isArray(parsed) || parsed.some((value) => typeof value !== "string")) {
+    console.error("  NEMOCLAW_SANDBOX_CREATE_ARGS_JSON must be a JSON array of strings.");
+    process.exit(1);
+  }
+
+  const sanitized = parsed.map((value) => value.trim());
+  if (sanitized.some((value) => value.length === 0 || /[\r\n]/.test(value))) {
+    console.error("  NEMOCLAW_SANDBOX_CREATE_ARGS_JSON entries must be non-empty single-line strings.");
+    process.exit(1);
+  }
+
+  return sanitized;
+}
+
 const { getTransportRecoveryMessage, getProbeRecovery } = validationRecovery;
 
 // Validation functions — delegated to src/lib/validation.ts
@@ -2081,6 +2108,7 @@ async function createSandbox(
     "--policy",
     basePolicyPath,
   ];
+  createArgs.push(...parseSandboxCreateArgsJson());
   // --gpu is intentionally omitted. See comment in startGateway().
 
   // Create OpenShell providers for messaging credentials so they flow through
