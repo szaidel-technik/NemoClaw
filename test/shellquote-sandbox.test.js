@@ -22,6 +22,12 @@ describe("sandboxName shell quoting in onboard.js", () => {
     );
   });
 
+  it("quotes sandboxName in setup-host-aliases.sh command", () => {
+    expect(src).toMatch(
+      /setup-host-aliases\.sh.*\$\{shellQuote\(GATEWAY_NAME\)\}.*\$\{shellQuote\(sandboxName\)\}/,
+    );
+  });
+
   it("does not have unquoted sandboxName in runCapture or run calls", () => {
     // Match run()/runCapture() calls that span multiple lines and contain
     // template literals, so multiline invocations are not missed.

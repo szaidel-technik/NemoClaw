@@ -40,7 +40,7 @@ Static changes modify the baseline policy file and take effect after the next sa
 
 Open `nemoclaw-blueprint/policies/openclaw-sandbox.yaml` and add or modify endpoint entries.
 
-Each entry in the `network` section defines an endpoint group with the following fields:
+Each entry in the `network_policies` section defines an endpoint group with the following fields:
 
 `endpoints`
 : Host and port pairs that the sandbox can reach.
@@ -83,7 +83,7 @@ Follow the same format as the baseline policy in `nemoclaw-blueprint/policies/op
 Use the OpenShell CLI to apply the policy update:
 
 ```console
-$ openshell policy set <policy-file>
+$ openshell policy set --policy <policy-file> --wait <sandbox-name>
 ```
 
 The change takes effect immediately.
@@ -97,7 +97,8 @@ To make changes permanent, update the static policy file and re-run setup.
 ## Policy Presets
 
 NemoClaw ships preset policy files for common integrations in `nemoclaw-blueprint/policies/presets/`.
-Apply a preset as-is or use it as a starting template for a custom policy.
+These preset files are policy fragments, not complete standalone policies.
+Apply them through NemoClaw so they are merged into the sandbox's current policy, or use them as a starting template for a custom merged policy file.
 
 Available presets:
 
@@ -107,16 +108,25 @@ Available presets:
 | `docker` | Docker Hub, NVIDIA container registry |
 | `huggingface` | Hugging Face model registry |
 | `jira` | Atlassian Jira API |
+| `local-host` | Host-local services on `host.docker.internal:8765` and `host.openshell.internal:8765` |
 | `npm` | npm and Yarn registries |
 | `outlook` | Microsoft 365 and Outlook |
 | `pypi` | Python Package Index |
 | `slack` | Slack API and webhooks |
 | `telegram` | Telegram Bot API |
 
-To apply a preset to a running sandbox, pass it as a policy file:
+To apply a preset to a running sandbox, use the NemoClaw merge flow:
 
 ```console
-$ openshell policy set nemoclaw-blueprint/policies/presets/pypi.yaml
+$ nemoclaw my-assistant policy-add
+```
+
+Then choose the preset you want to apply, for example `local-host` or `pypi`.
+
+If you prefer the raw OpenShell path, first merge the preset entries into the current policy YAML, then apply the merged file:
+
+```console
+$ openshell policy set --policy merged-policy.yaml --wait my-assistant
 ```
 
 To include a preset in the baseline, merge its entries into `openclaw-sandbox.yaml` and re-run `nemoclaw onboard`.

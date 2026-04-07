@@ -79,6 +79,13 @@ The wizard prompts for a sandbox name.
 Names must follow RFC 1123 subdomain rules: lowercase alphanumeric characters and hyphens only, and must start and end with an alphanumeric character.
 Uppercase letters are automatically lowercased.
 
+If you need extra `openshell sandbox create` flags, set `NEMOCLAW_SANDBOX_CREATE_ARGS_JSON` to a JSON string array before onboarding.
+
+```console
+$ export NEMOCLAW_SANDBOX_CREATE_ARGS_JSON='["--forward","3000"]'
+$ nemoclaw onboard --non-interactive
+```
+
 Before creating the gateway, the wizard runs preflight checks.
 It verifies that Docker is reachable, warns on unsupported runtimes such as Podman, and prints host remediation guidance when prerequisites are missing.
 

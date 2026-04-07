@@ -465,7 +465,9 @@ function parseSandboxCreateArgsJson(rawValue = process.env.NEMOCLAW_SANDBOX_CREA
 
   const sanitized = parsed.map((value) => value.trim());
   if (sanitized.some((value) => value.length === 0 || /[\r\n]/.test(value))) {
-    console.error("  NEMOCLAW_SANDBOX_CREATE_ARGS_JSON entries must be non-empty single-line strings.");
+    console.error(
+      "  NEMOCLAW_SANDBOX_CREATE_ARGS_JSON entries must be non-empty single-line strings.",
+    );
     process.exit(1);
   }
 
@@ -2286,6 +2288,18 @@ async function createSandbox(
     `bash "${path.join(SCRIPTS, "setup-dns-proxy.sh")}" ${shellQuote(GATEWAY_NAME)} ${shellQuote(sandboxName)} 2>&1 || true`,
     { ignoreError: true },
   );
+
+  // On WSL + Docker Desktop, OpenShell can inject host-local aliases into the
+  // sandbox's /etc/hosts with a Docker gateway IP that is not actually reachable
+  // from the sandbox namespace. Align the sandbox aliases with the host-side
+  // resolution that already works in WSL.
+  if (isWsl() && getContainerRuntime() === "docker-desktop") {
+    console.log("  Repairing sandbox host aliases for Docker Desktop...");
+    run(
+      `bash "${path.join(SCRIPTS, "setup-host-aliases.sh")}" ${shellQuote(GATEWAY_NAME)} ${shellQuote(sandboxName)} 2>&1 || true`,
+      { ignoreError: true },
+    );
+  }
 
   // Check that messaging providers exist in the gateway (sandbox attachment
   // cannot be verified via CLI yet — only gateway-level existence is checked).

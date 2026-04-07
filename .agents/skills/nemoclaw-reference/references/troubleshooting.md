@@ -244,6 +244,33 @@ $ openshell term
 To permanently allow an endpoint, add it to the network policy.
 Refer to Customize the Network Policy (see the `nemoclaw-manage-policy` skill) for details.
 
+### Sandbox cannot connect to `host.docker.internal` or `host.openshell.internal`
+
+If a request from inside the sandbox fails immediately with an error such as `curl: (7) Failed to connect ... Couldn't connect to server`, the hostname usually resolved correctly and the TCP connection was refused.
+That typically means the host service is not listening on an address the sandbox can reach, not that the request was blocked by policy.
+
+Check the active sandbox policy first:
+
+```console
+$ openshell policy get --full <name>
+```
+
+If you want the built-in host-local allowlist, apply the `local-host` preset:
+
+```console
+$ nemoclaw <name> policy-add
+```
+
+Then choose `local-host`.
+
+If the policy is present but the connection still fails, verify the service on the host:
+
+- Make sure the host service is actually listening on the expected port.
+- On Linux with Docker, bind the service to `0.0.0.0:<port>` instead of `127.0.0.1:<port>`.
+- Try both `host.docker.internal` and `host.openshell.internal` from inside the sandbox.
+
+This is the same class of issue described for local Ollama or other local inference servers: the sandbox can only reach services that the host exposes on a non-loopback interface.
+
 ### Blueprint run failed
 
 View the error output for the failed blueprint run:
