@@ -58,11 +58,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-venv=3.11.2-1+b1 \
         curl=7.88.1-10+deb12u14 \
         git=1:2.39.5-0+deb12u3 \
+        ripgrep \
+        fzf \
+        bat \
         ca-certificates=20230311+deb12u1 \
         iproute2=6.1.0-3 \
         iptables=1.8.9-2 \
         libcap2-bin=1:2.66-4+deb12u2+b2 \
     && rm -rf /var/lib/apt/lists/*
+
+# Debian may install bat as batcat; expose a stable `bat` command.
+RUN if [ -x /usr/bin/batcat ] && [ ! -e /usr/local/bin/bat ]; then ln -s /usr/bin/batcat /usr/local/bin/bat; fi
 
 # gosu for privilege separation (gateway vs sandbox user).
 # Install from GitHub release with checksum verification instead of
