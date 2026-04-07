@@ -72,7 +72,9 @@ function getPresetEndpoints(content) {
 
   // Backward-compatible fallback for lightweight snippets used in tests.
   const hosts = [];
-  const regex = /(?:^|\n)\s*-?\s*host:\s*([^\s,}]+)/g;
+  // Match endpoint lines at start-of-line (`host:` or `- host:`).
+  // Avoid matching `host:` substrings inside keys such as `local_host:`.
+  const regex = /(?:^|\n)\s*(?:-\s*)?host:\s*([^\s,}]+)/g;
   let match;
   while ((match = regex.exec(content)) !== null) {
     hosts.push(match[1].replace(/^["']|["']$/g, ""));
