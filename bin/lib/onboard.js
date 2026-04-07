@@ -1179,6 +1179,102 @@ function parsePolicyPresetEnv(value) {
     .filter(Boolean);
 }
 
+function parseSandboxCreateArgsJson(rawValue = process.env.NEMOCLAW_SANDBOX_CREATE_ARGS_JSON) {
+  const raw = (rawValue || "").trim();
+  if (!raw) return [];
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    console.error("  NEMOCLAW_SANDBOX_CREATE_ARGS_JSON must be valid JSON.");
+    console.error('  Example: ["--forward","3000","--upload","/host/path:/sandbox/path"]');
+    process.exit(1);
+  }
+
+  if (!Array.isArray(parsed) || parsed.some((value) => typeof value !== "string")) {
+    console.error("  NEMOCLAW_SANDBOX_CREATE_ARGS_JSON must be a JSON array of strings.");
+    process.exit(1);
+  }
+
+  const sanitized = parsed.map((value) => value.trim());
+  if (sanitized.some((value) => value.length === 0 || /[\r\n]/.test(value))) {
+    console.error("  NEMOCLAW_SANDBOX_CREATE_ARGS_JSON entries must be non-empty single-line strings.");
+    process.exit(1);
+  }
+
+  return sanitized;
+}
+
+function isValidSandboxMountPath(value) {
+  return typeof value === "string" && value.trim().length > 0 && !/[\r\n,]/.test(value);
+}
+
+function buildSandboxMountSpec(sourcePath, targetPath, readOnly) {
+  return readOnly
+    ? `type=bind,src=${sourcePath},dst=${targetPath},ro`
+    : `type=bind,src=${sourcePath},dst=${targetPath}`;
+}
+
+function parseSandboxMountsJson(rawValue = process.env.NEMOCLAW_SANDBOX_MOUNTS_JSON) {
+  const raw = (rawValue || "").trim();
+  if (!raw) return [];
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    console.error("  NEMOCLAW_SANDBOX_MOUNTS_JSON must be valid JSON.");
+    console.error(
+      '  Example: [{"source":"/mnt/team","target":"/sandbox/team","mode":"ro"}]'
+    );
+    process.exit(1);
+  }
+
+  if (!Array.isArray(parsed)) {
+    console.error("  NEMOCLAW_SANDBOX_MOUNTS_JSON must be a JSON array.");
+    process.exit(1);
+  }
+
+  return parsed.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      console.error(`  Mount #${index + 1} must be an object.`);
+      process.exit(1);
+    }
+    const source = typeof entry.source === "string" ? entry.source.trim() : "";
+    const target = typeof entry.target === "string" ? entry.target.trim() : "";
+    const mode = String(entry.mode || "ro").trim().toLowerCase();
+
+    if (!isValidSandboxMountPath(source) || !isValidSandboxMountPath(target)) {
+      console.error(
+        `  Mount #${index + 1} has invalid source/target. Empty values and commas are not allowed.`
+      );
+      process.exit(1);
+    }
+    if (!target.startsWith("/")) {
+      console.error(`  Mount #${index + 1} target must be an absolute sandbox path (start with '/').`);
+      process.exit(1);
+    }
+    if (mode !== "ro" && mode !== "rw") {
+      console.error(`  Mount #${index + 1} mode must be "ro" or "rw".`);
+      process.exit(1);
+    }
+    return {
+      source,
+      target,
+      readOnly: mode === "ro",
+    };
+  });
+}
+
+function buildSandboxMountCreateArgs(mounts = []) {
+  const args = [];
+  for (const mount of mounts) {
+    args.push("--mount", buildSandboxMountSpec(mount.source, mount.target, mount.readOnly));
+  }
+  return args;
+}
+
 function isSafeModelId(value) {
   return /^[A-Za-z0-9._:/-]+$/.test(value);
 }
@@ -1218,7 +1314,7 @@ function getNonInteractiveModel(providerKey) {
 
 // eslint-disable-next-line complexity
 async function preflight() {
-  step(1, 7, "Preflight checks");
+  step(1, 8, "Preflight checks");
 
   // Docker
   if (!isDockerRunning()) {
@@ -1341,7 +1437,7 @@ function destroyGateway() {
 // ── Step 2: Gateway ──────────────────────────────────────────────
 
 async function startGatewayWithOptions(_gpu, { exitOnFailure = true } = {}) {
-  step(3, 7, "Starting OpenShell gateway");
+  step(3, 8, "Starting OpenShell gateway");
 
   const gatewayStatus = runCaptureOpenshell(["status"], { ignoreError: true });
   const gwInfo = runCaptureOpenshell(["gateway", "info", "-g", GATEWAY_NAME], { ignoreError: true });
@@ -1426,8 +1522,14 @@ async function startGatewayForRecovery(_gpu) {
 
 // ── Step 3: Sandbox ──────────────────────────────────────────────
 
-async function createSandbox(gpu, model, provider, preferredInferenceApi = null) {
-  step(5, 7, "Creating sandbox");
+async function createSandbox(
+  gpu,
+  model,
+  provider,
+  preferredInferenceApi = null,
+  mountCreateArgs = [],
+) {
+  step(6, 8, "Creating sandbox");
 
   const nameAnswer = await promptOrDefault(
     "  Sandbox name (lowercase, numbers, hyphens) [my-assistant]: ",
@@ -1485,6 +1587,13 @@ async function createSandbox(gpu, model, provider, preferredInferenceApi = null)
     "--name", sandboxName,
     "--policy", basePolicyPath,
   ];
+  if (Array.isArray(mountCreateArgs) && mountCreateArgs.length > 0) {
+    createArgs.push(...mountCreateArgs);
+  }
+  const extraCreateArgs = parseSandboxCreateArgsJson();
+  if (extraCreateArgs.length > 0) {
+    createArgs.push(...extraCreateArgs);
+  }
   // --gpu is intentionally omitted. See comment in startGateway().
 
   console.log(`  Creating sandbox '${sandboxName}' (this takes a few minutes on first run)...`);
@@ -1595,7 +1704,7 @@ async function createSandbox(gpu, model, provider, preferredInferenceApi = null)
 
 // eslint-disable-next-line complexity
 async function setupNim(gpu) {
-  step(2, 7, "Configuring inference (NIM)");
+  step(2, 8, "Configuring inference (NIM)");
 
   let model = null;
   let provider = REMOTE_PROVIDER_CONFIG.build.providerName;
@@ -1994,7 +2103,7 @@ async function setupNim(gpu) {
 
 // eslint-disable-next-line complexity
 async function setupInference(sandboxName, model, provider, endpointUrl = null, credentialEnv = null) {
-  step(4, 7, "Setting up inference provider");
+  step(4, 8, "Setting up inference provider");
   runOpenshell(["gateway", "select", GATEWAY_NAME], { ignoreError: true });
 
   if (provider === "nvidia-prod" || provider === "nvidia-nim" || provider === "openai-api" || provider === "anthropic-prod" || provider === "compatible-anthropic-endpoint" || provider === "gemini-api" || provider === "compatible-endpoint") {
@@ -2051,7 +2160,7 @@ async function setupInference(sandboxName, model, provider, endpointUrl = null, 
 // ── Step 6: OpenClaw ─────────────────────────────────────────────
 
 async function setupOpenclaw(sandboxName, model, provider) {
-  step(6, 7, "Setting up OpenClaw inside sandbox");
+  step(7, 8, "Setting up OpenClaw inside sandbox");
 
   const selectionConfig = getProviderSelectionConfig(provider, model);
   if (selectionConfig) {
@@ -2078,7 +2187,7 @@ async function setupOpenclaw(sandboxName, model, provider) {
 
 // eslint-disable-next-line complexity
 async function setupPolicies(sandboxName) {
-  step(7, 7, "Policy presets");
+  step(8, 8, "Policy presets");
 
   const suggestions = ["pypi", "npm"];
 
@@ -2321,6 +2430,68 @@ function printDashboard(sandboxName, model, provider, nimContainer = null) {
   console.log("");
 }
 
+async function setupSandboxMounts() {
+  step(5, 8, "Optional folder mounts");
+
+  let mounts = [];
+  if (isNonInteractive()) {
+    mounts = parseSandboxMountsJson();
+    if (mounts.length === 0) {
+      note("  [non-interactive] No extra folder mounts configured.");
+      return [];
+    }
+    note(`  [non-interactive] Mounts configured: ${mounts.length}`);
+  } else {
+    console.log("  You can optionally bind host folders into the sandbox.");
+    const configure = await prompt("  Add folder mounts? [y/N]: ");
+    if (configure.trim().toLowerCase() !== "y") {
+      console.log("  Skipping folder mounts.");
+      return [];
+    }
+
+    while (true) {
+      const source = (await prompt("  Host folder path (blank to finish): ")).trim();
+      if (!source) break;
+      if (!isValidSandboxMountPath(source)) {
+        console.error("  Invalid host folder path (empty/newline/comma not allowed).");
+        continue;
+      }
+
+      const target = (await prompt("  Sandbox mount path (must start with /): ")).trim();
+      if (!isValidSandboxMountPath(target) || !target.startsWith("/")) {
+        console.error("  Invalid sandbox path. Use an absolute path like /sandbox/shared.");
+        continue;
+      }
+
+      const modeRaw = (await prompt("  Mount mode [ro/rw] [ro]: ")).trim().toLowerCase();
+      const mode = modeRaw || "ro";
+      if (mode !== "ro" && mode !== "rw") {
+        console.error("  Invalid mode. Use 'ro' or 'rw'.");
+        continue;
+      }
+
+      mounts.push({
+        source,
+        target,
+        readOnly: mode === "ro",
+      });
+    }
+  }
+
+  if (mounts.length === 0) {
+    console.log("  No folder mounts configured.");
+    return [];
+  }
+
+  console.log("  Folder mounts:");
+  for (const mount of mounts) {
+    console.log(
+      `    - ${mount.source} -> ${mount.target} (${mount.readOnly ? "read-only" : "read-write"})`
+    );
+  }
+  return buildSandboxMountCreateArgs(mounts);
+}
+
 // ── Main ─────────────────────────────────────────────────────────
 
 async function onboard(opts = {}) {
@@ -2337,12 +2508,19 @@ async function onboard(opts = {}) {
   process.env.NEMOCLAW_OPENSHELL_BIN = getOpenshellBinary();
   await startGateway(gpu);
   await setupInference(GATEWAY_NAME, model, provider, endpointUrl, credentialEnv);
+  const sandboxMountCreateArgs = await setupSandboxMounts();
   // The key is now stored in openshell's provider config. Clear it from our
   // process environment so new child processes don't inherit it. Note: this
   // does NOT clear /proc/pid/environ (kernel snapshot is immutable after exec),
   // but it prevents run()'s { ...process.env } from propagating the key.
   delete process.env.NVIDIA_API_KEY;
-  const sandboxName = await createSandbox(gpu, model, provider, preferredInferenceApi);
+  const sandboxName = await createSandbox(
+    gpu,
+    model,
+    provider,
+    preferredInferenceApi,
+    sandboxMountCreateArgs,
+  );
   if (nimContainer) {
     registry.updateSandbox(sandboxName, { nimContainer });
   }
@@ -2352,6 +2530,7 @@ async function onboard(opts = {}) {
 }
 
 module.exports = {
+  buildSandboxMountCreateArgs,
   buildSandboxConfigSyncScript,
   getFutureShellPathHint,
   createSandbox,

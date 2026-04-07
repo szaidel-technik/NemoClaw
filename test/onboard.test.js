@@ -9,6 +9,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSandboxMountCreateArgs,
   buildSandboxConfigSyncScript,
   getFutureShellPathHint,
   getInstalledOpenshellVersion,
@@ -37,6 +38,20 @@ describe("onboard helpers", () => {
     assert.doesNotMatch(script, /cat > ~\/\.openclaw\/openclaw\.json/);
     assert.doesNotMatch(script, /openclaw models set/);
     assert.match(script, /^exit$/m);
+  });
+
+  it("builds --mount args for multiple sandbox folder mounts", () => {
+    expect(
+      buildSandboxMountCreateArgs([
+        { source: "/mnt/external", target: "/sandbox/external", readOnly: true },
+        { source: "/mnt/team", target: "/sandbox/team", readOnly: false },
+      ])
+    ).toEqual([
+      "--mount",
+      "type=bind,src=/mnt/external,dst=/sandbox/external,ro",
+      "--mount",
+      "type=bind,src=/mnt/team,dst=/sandbox/team",
+    ]);
   });
 
   it("patches the staged Dockerfile with the selected model and chat UI URL", () => {
@@ -617,6 +632,97 @@ const { createSandbox } = require(${onboardPath});
     assert.doesNotMatch(createCommand.command, /NVIDIA_API_KEY=/);
     assert.doesNotMatch(createCommand.command, /DISCORD_BOT_TOKEN=/);
     assert.doesNotMatch(createCommand.command, /SLACK_BOT_TOKEN=/);
+  });
+
+  it("appends extra sandbox create arguments from JSON env", async () => {
+    const repoRoot = path.join(import.meta.dirname, "..");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-extra-create-args-"));
+    const fakeBin = path.join(tmpDir, "bin");
+    const scriptPath = path.join(tmpDir, "create-sandbox-extra-args-check.js");
+    const onboardPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "onboard.js"));
+    const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
+    const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
+    const preflightPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "preflight.js"));
+    const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
+
+    fs.mkdirSync(fakeBin, { recursive: true });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+
+    const script = String.raw`
+const runner = require(${runnerPath});
+const registry = require(${registryPath});
+const preflight = require(${preflightPath});
+const credentials = require(${credentialsPath});
+const childProcess = require("node:child_process");
+const { EventEmitter } = require("node:events");
+
+const commands = [];
+runner.run = (command, opts = {}) => {
+  commands.push({ command, env: opts.env || null });
+  return { status: 0 };
+};
+runner.runCapture = (command) => {
+  if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
+  if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
+  return "";
+};
+registry.registerSandbox = () => true;
+registry.removeSandbox = () => true;
+preflight.checkPortAvailable = async () => ({ ok: true });
+credentials.prompt = async () => "";
+
+childProcess.spawn = (...args) => {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  commands.push({ command: args[1][1], env: args[2]?.env || null });
+  process.nextTick(() => {
+    child.stdout.emit("data", Buffer.from("Created sandbox: my-assistant\n"));
+    child.emit("close", 0);
+  });
+  return child;
+};
+
+const { createSandbox } = require(${onboardPath});
+
+(async () => {
+  process.env.OPENSHELL_GATEWAY = "nemoclaw";
+  const sandboxName = await createSandbox(null, "gpt-5.4");
+  console.log(JSON.stringify({ sandboxName, commands }));
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+`;
+    fs.writeFileSync(scriptPath, script);
+
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        HOME: tmpDir,
+        PATH: `${fakeBin}:${process.env.PATH || ""}`,
+        NEMOCLAW_NON_INTERACTIVE: "1",
+        NEMOCLAW_SANDBOX_CREATE_ARGS_JSON:
+          '["--mount","type=bind,src=/mnt/external,dst=/sandbox/external,ro"]',
+      },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const payloadLine = result.stdout
+      .trim()
+      .split("\n")
+      .slice()
+      .reverse()
+      .find((line) => line.startsWith("{") && line.endsWith("}"));
+    assert.ok(payloadLine, `expected JSON payload in stdout:\n${result.stdout}`);
+    const payload = JSON.parse(payloadLine);
+    assert.equal(payload.sandboxName, "my-assistant");
+    const createCommand = payload.commands.find((entry) => entry.command.includes("'sandbox' 'create'"));
+    assert.ok(createCommand, "expected sandbox create command");
+    assert.match(createCommand.command, /'--mount'/);
+    assert.match(createCommand.command, /'type=bind,src=\/mnt\/external,dst=\/sandbox\/external,ro'/);
   });
 
   it("continues once the sandbox is Ready even if the create stream never closes", async () => {
