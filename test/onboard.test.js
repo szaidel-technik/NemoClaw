@@ -9,7 +9,6 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildSandboxMountCreateArgs,
   buildSandboxConfigSyncScript,
   getFutureShellPathHint,
   getInstalledOpenshellVersion,
@@ -38,20 +37,6 @@ describe("onboard helpers", () => {
     assert.doesNotMatch(script, /cat > ~\/\.openclaw\/openclaw\.json/);
     assert.doesNotMatch(script, /openclaw models set/);
     assert.match(script, /^exit$/m);
-  });
-
-  it("builds --mount args for multiple sandbox folder mounts", () => {
-    expect(
-      buildSandboxMountCreateArgs([
-        { source: "/mnt/external", target: "/sandbox/external", readOnly: true },
-        { source: "/mnt/team", target: "/sandbox/team", readOnly: false },
-      ])
-    ).toEqual([
-      "--mount",
-      "type=bind,src=/mnt/external,dst=/sandbox/external,ro",
-      "--mount",
-      "type=bind,src=/mnt/team,dst=/sandbox/team",
-    ]);
   });
 
   it("patches the staged Dockerfile with the selected model and chat UI URL", () => {
@@ -705,7 +690,7 @@ const { createSandbox } = require(${onboardPath});
         PATH: `${fakeBin}:${process.env.PATH || ""}`,
         NEMOCLAW_NON_INTERACTIVE: "1",
         NEMOCLAW_SANDBOX_CREATE_ARGS_JSON:
-          '["--mount","type=bind,src=/mnt/external,dst=/sandbox/external,ro"]',
+          '["--forward","3000"]',
       },
     });
 
@@ -721,8 +706,8 @@ const { createSandbox } = require(${onboardPath});
     assert.equal(payload.sandboxName, "my-assistant");
     const createCommand = payload.commands.find((entry) => entry.command.includes("'sandbox' 'create'"));
     assert.ok(createCommand, "expected sandbox create command");
-    assert.match(createCommand.command, /'--mount'/);
-    assert.match(createCommand.command, /'type=bind,src=\/mnt\/external,dst=\/sandbox\/external,ro'/);
+    assert.match(createCommand.command, /'--forward'/);
+    assert.match(createCommand.command, /'3000'/);
   });
 
   it("continues once the sandbox is Ready even if the create stream never closes", async () => {

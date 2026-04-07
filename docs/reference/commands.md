@@ -52,18 +52,10 @@ The wizard prompts for a sandbox name.
 Names must follow RFC 1123 subdomain rules: lowercase alphanumeric characters and hyphens only, and must start and end with an alphanumeric character.
 Uppercase letters are automatically lowercased.
 
-If you need extra `openshell sandbox create` flags (for example, host bind-style mounts for external drives or SMB-mounted folders), set `NEMOCLAW_SANDBOX_CREATE_ARGS_JSON` to a JSON string array before onboarding.
+If you need extra `openshell sandbox create` flags, set `NEMOCLAW_SANDBOX_CREATE_ARGS_JSON` to a JSON string array before onboarding.
 
 ```console
-$ export NEMOCLAW_SANDBOX_CREATE_ARGS_JSON='["--mount","type=bind,src=/mnt/team-share,dst=/sandbox/team-share,ro"]'
-$ nemoclaw onboard --non-interactive
-```
-
-During interactive onboarding, NemoClaw now includes an optional folder-mount step where you can add multiple host folders one-by-one.
-For non-interactive onboarding, set `NEMOCLAW_SANDBOX_MOUNTS_JSON`:
-
-```console
-$ export NEMOCLAW_SANDBOX_MOUNTS_JSON='[{"source":"/mnt/team-share","target":"/sandbox/team-share","mode":"ro"},{"source":"/mnt/archive","target":"/sandbox/archive","mode":"rw"}]'
+$ export NEMOCLAW_SANDBOX_CREATE_ARGS_JSON='["--forward","3000"]'
 $ nemoclaw onboard --non-interactive
 ```
 
