@@ -75,6 +75,12 @@ The script installs Node.js if it is not already present, then runs the guided o
 curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
 ```
 
+> **⚠️ Fork stability note**
+>
+> In this fork, the installer defaults to `main` when `NEMOCLAW_INSTALL_TAG` is not set.
+> That means installs track the latest branch state rather than a pinned release tag and may be less stable.
+> To pin a specific ref, set `NEMOCLAW_INSTALL_TAG` (for example, `NEMOCLAW_INSTALL_TAG=v0.7`).
+
 If you use nvm or fnm to manage Node.js, the installer may not update your current shell's PATH.
 If `nemoclaw` is not found after install, run `source ~/.bashrc` (or `source ~/.zshrc` for zsh) or open a new terminal.
 
