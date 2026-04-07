@@ -2506,13 +2506,14 @@ const { createSandbox } = require(${onboardPath});
     const repoRoot = path.join(import.meta.dirname, "..");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-reuse-forward-"));
     const fakeBin = path.join(tmpDir, "bin");
+    const openshellBin = path.join(fakeBin, "openshell");
     const scriptPath = path.join(tmpDir, "reuse-sandbox-forward.js");
     const onboardPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "onboard.js"));
     const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
     const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+    fs.writeFileSync(openshellBin, "#!/usr/bin/env bash\nexit 0\n", {
       mode: 0o755,
     });
 
