@@ -5,17 +5,24 @@
 # Repair host-local aliases inside the sandbox when Docker Desktop + WSL injects
 # stale /etc/hosts entries that do not match the host-side resolution path.
 #
-# Problem: On some WSL2 + Docker Desktop setups, the sandbox gets
+# Problem:
+#   On some WSL2 + Docker Desktop setups, the sandbox gets
 #   host.docker.internal / host.openshell.internal -> 192.168.65.254
-# in /etc/hosts, while the working host route from WSL resolves to a different
-# Windows host IP. Because /etc/hosts wins over DNS, the sandbox keeps trying
-# the stale IP and local-host presets appear broken.
+#   in /etc/hosts, while the working host route from WSL resolves to a
+#   different Windows host IP. Because /etc/hosts wins over DNS, the sandbox
+#   keeps trying the stale IP and local-host presets appear broken.
+#
+#   Even after rewriting the aliases to the working Windows host IP, direct TCP
+#   from the isolated sandbox namespace can still be refused. The sandbox does,
+#   however, reliably reach the pod-side gateway IP (10.200.0.1).
 #
 # Fix:
 #   1. Resolve host.docker.internal on the WSL host.
-#   2. Find the OpenShell sandbox network namespace.
-#   3. Replace any existing host-local alias lines in /etc/hosts with the
-#      host-side IPv4 that WSL already uses successfully.
+#   2. Find the OpenShell sandbox pod and network namespace.
+#   3. Run a pod-side TCP forwarder on the sandbox gateway IP (10.200.0.1:8765)
+#      that relays traffic to the resolved Windows host IP:8765.
+#   4. Allow TCP to that gateway IP:port in the sandbox namespace.
+#   5. Rewrite host-local aliases in /etc/hosts to point at the gateway IP.
 #
 # Usage: ./scripts/setup-host-aliases.sh [gateway-name] <sandbox-name>
 
@@ -120,29 +127,123 @@ if [ -z "$SANDBOX_NS" ]; then
   exit 1
 fi
 
+VETH_GW="$(kctl exec -n openshell "$POD" -- sh -c \
+  "ip addr show | grep 'inet 10\\.200\\.0\\.' | awk '{print \$2}' | cut -d/ -f1" \
+  2>/dev/null || true)"
+VETH_GW="${VETH_GW:-10.200.0.1}"
+
 sb_exec() {
   kctl exec -n openshell "$POD" -- ip netns exec "$SANDBOX_NS" "$@"
 }
 
 CURRENT_HOSTS="$(sb_exec getent hosts host.docker.internal host.openshell.internal 2>/dev/null || true)"
-if printf '%s\n' "$CURRENT_HOSTS" | grep -q "^${HOST_ALIAS_IP}[[:space:]].*host.docker.internal"; then
-  echo "  [PASS] Sandbox host aliases already resolve to ${HOST_ALIAS_IP}"
-  exit 0
+echo "Repairing sandbox host aliases in pod '$POD' (${CURRENT_HOSTS:-unresolved} -> ${VETH_GW}; upstream ${HOST_ALIAS_IP}:8765)..."
+
+kctl exec -n openshell "$POD" -- sh -c "cat > /tmp/host-port-proxy.py << 'HOSTPROXY'
+import os
+import socket
+import sys
+import threading
+
+UPSTREAM_HOST = sys.argv[1]
+UPSTREAM_PORT = int(sys.argv[2])
+BIND_IP = sys.argv[3]
+BIND_PORT = int(sys.argv[4])
+
+listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+listener.bind((BIND_IP, BIND_PORT))
+listener.listen(128)
+
+with open('/tmp/host-port-proxy.pid', 'w') as pf:
+    pf.write(str(os.getpid()))
+
+msg = f'host-port-proxy: {BIND_IP}:{BIND_PORT} -> {UPSTREAM_HOST}:{UPSTREAM_PORT} pid={os.getpid()}'
+print(msg, flush=True)
+with open('/tmp/host-port-proxy.log', 'w') as log:
+    log.write(msg + '\n')
+
+def pump(src, dst):
+    try:
+        while True:
+            data = src.recv(65536)
+            if not data:
+                break
+            dst.sendall(data)
+    except Exception:
+        pass
+    finally:
+        try:
+            dst.shutdown(socket.SHUT_WR)
+        except Exception:
+            pass
+        try:
+            src.close()
+        except Exception:
+            pass
+        try:
+            dst.close()
+        except Exception:
+            pass
+
+while True:
+    client, _ = listener.accept()
+    try:
+        upstream = socket.create_connection((UPSTREAM_HOST, UPSTREAM_PORT), timeout=5)
+    except Exception:
+        try:
+            client.close()
+        except Exception:
+            pass
+        continue
+    threading.Thread(target=pump, args=(client, upstream), daemon=True).start()
+    threading.Thread(target=pump, args=(upstream, client), daemon=True).start()
+HOSTPROXY"
+
+OLD_PID="$(kctl exec -n openshell "$POD" -- cat /tmp/host-port-proxy.pid 2>/dev/null || true)"
+if [ -n "$OLD_PID" ]; then
+  kctl exec -n openshell "$POD" -- kill "$OLD_PID" 2>/dev/null || true
+  sleep 1
 fi
 
-echo "Repairing sandbox host aliases in pod '$POD' (${CURRENT_HOSTS:-unresolved} -> ${HOST_ALIAS_IP})..."
+kctl exec -n openshell "$POD" -- \
+  sh -c "nohup python3 -u /tmp/host-port-proxy.py '${HOST_ALIAS_IP}' '8765' '${VETH_GW}' '8765' \
+    > /tmp/host-port-proxy.log 2>&1 &"
+
+sleep 2
+
+IPTABLES_BIN=""
+for candidate in iptables /sbin/iptables /usr/sbin/iptables; do
+  if kctl exec -n openshell "$POD" -- sh -c "test -x \"\$(command -v $candidate 2>/dev/null || echo $candidate)\"" 2>/dev/null; then
+    IPTABLES_BIN="$candidate"
+    break
+  fi
+done
+
+if [ -z "$IPTABLES_BIN" ]; then
+  echo "WARNING: iptables not found in pod. Sandbox host aliases not repaired."
+  exit 1
+fi
+
+sb_exec "$IPTABLES_BIN" -C OUTPUT -p tcp -d "$VETH_GW" --dport 8765 -j ACCEPT 2>/dev/null \
+  || sb_exec "$IPTABLES_BIN" -I OUTPUT 1 -p tcp -d "$VETH_GW" --dport 8765 -j ACCEPT
 
 sb_exec sh -c "
   [ -f /tmp/hosts.orig ] || cp /etc/hosts /tmp/hosts.orig
   awk '!/(host\\.docker\\.internal|host\\.openshell\\.internal)/' /etc/hosts > /tmp/hosts.nemoclaw
-  printf '%s host.docker.internal host.openshell.internal\n' '$HOST_ALIAS_IP' >> /tmp/hosts.nemoclaw
+  printf '%s host.docker.internal host.openshell.internal\n' '$VETH_GW' >> /tmp/hosts.nemoclaw
   cat /tmp/hosts.nemoclaw > /etc/hosts
 "
 
 VERIFY_HOSTS="$(sb_exec getent hosts host.docker.internal host.openshell.internal 2>/dev/null || true)"
-if printf '%s\n' "$VERIFY_HOSTS" | grep -q "^${HOST_ALIAS_IP}[[:space:]].*host.docker.internal"; then
-  echo "  [PASS] Sandbox host aliases repaired -> ${HOST_ALIAS_IP}"
+PROXY_PID="$(kctl exec -n openshell "$POD" -- cat /tmp/host-port-proxy.pid 2>/dev/null || true)"
+PROXY_LOG="$(kctl exec -n openshell "$POD" -- cat /tmp/host-port-proxy.log 2>/dev/null || true)"
+
+if printf '%s\n' "$VERIFY_HOSTS" | grep -q "^${VETH_GW}[[:space:]].*host.docker.internal" \
+  && [ -n "$PROXY_PID" ] \
+  && printf '%s' "$PROXY_LOG" | grep -q "host-port-proxy:"; then
+  echo "  [PASS] Sandbox host aliases repaired -> ${VETH_GW} (forwarding to ${HOST_ALIAS_IP}:8765)"
 else
-  echo "  [FAIL] Sandbox host aliases still do not resolve to ${HOST_ALIAS_IP}: ${VERIFY_HOSTS:-unresolved}"
+  echo "  [FAIL] Sandbox host aliases still do not resolve to ${VETH_GW}: ${VERIFY_HOSTS:-unresolved}"
   exit 1
 fi

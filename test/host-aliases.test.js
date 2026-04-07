@@ -54,4 +54,19 @@ describe("setup-host-aliases.sh", () => {
     expect(content).toContain("docker_host_runtime");
     expect(content).toContain("docker-desktop");
   });
+
+  it("runs a pod-side TCP forwarder on the sandbox gateway IP", () => {
+    const content = fs.readFileSync(SETUP_HOST_ALIASES, "utf-8");
+    expect(content).toContain("host-port-proxy.py");
+    expect(content).toContain("socket.SOCK_STREAM");
+    expect(content).toContain("VETH_GW");
+    expect(content).toContain("8765");
+  });
+
+  it("adds an iptables TCP allow rule for the forwarded host-local port", () => {
+    const content = fs.readFileSync(SETUP_HOST_ALIASES, "utf-8");
+    expect(content).toContain("-p tcp");
+    expect(content).toContain("--dport 8765");
+    expect(content).toContain("ACCEPT");
+  });
 });
