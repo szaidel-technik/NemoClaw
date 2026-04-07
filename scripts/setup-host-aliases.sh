@@ -51,6 +51,23 @@ if [ -z "${DOCKER_HOST:-}" ]; then
 fi
 
 RUNTIME="$(docker_host_runtime "${DOCKER_HOST:-}" || true)"
+if [ "$RUNTIME" = "unknown" ] || [ -z "$RUNTIME" ]; then
+  DOCKER_INFO="$(docker info 2>/dev/null || true)"
+  case "$(printf '%s' "$DOCKER_INFO" | tr '[:upper:]' '[:lower:]')" in
+    *"docker desktop"*)
+      RUNTIME="docker-desktop"
+      ;;
+    *colima*)
+      RUNTIME="colima"
+      ;;
+    *docker*)
+      RUNTIME="docker"
+      ;;
+    *podman*)
+      RUNTIME="podman"
+      ;;
+  esac
+fi
 if [ "$RUNTIME" != "docker-desktop" ]; then
   echo "Skipping sandbox host-alias repair: runtime is '${RUNTIME:-unknown}', not docker-desktop."
   exit 0
@@ -69,12 +86,6 @@ fi
 if printf '%s' "$HOST_ALIAS_IP" | grep -qE '^127\.'; then
   echo "WARNING: host.docker.internal resolved to loopback (${HOST_ALIAS_IP}); refusing to rewrite sandbox aliases."
   exit 0
-fi
-
-if [ -z "${DOCKER_HOST:-}" ]; then
-  if docker_host="$(detect_docker_host)"; then
-    export DOCKER_HOST="$docker_host"
-  fi
 fi
 
 CLUSTERS="$(docker ps --filter "name=openshell-cluster" --format '{{.Names}}' 2>/dev/null || true)"
