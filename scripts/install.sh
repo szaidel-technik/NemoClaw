@@ -874,7 +874,7 @@ install_nemoclaw() {
     rm -rf "$nemoclaw_src"
     mkdir -p "$(dirname "$nemoclaw_src")"
     NEMOCLAW_SOURCE_ROOT="$nemoclaw_src"
-    spin "Cloning NemoClaw source" git clone --depth 1 --branch "$release_ref" https://github.com/NVIDIA/NemoClaw.git "$nemoclaw_src"
+    spin "Cloning NemoClaw source" git clone --depth 1 --branch "$release_ref" https://github.com/szaidel-technik/NemoClaw.git "$nemoclaw_src"
     # Fetch version tags into the shallow clone so `git describe --tags
     # --match "v*"` works at runtime (the shallow clone only has the
     # single ref we asked for).
@@ -928,7 +928,7 @@ verify_nemoclaw() {
     return 0
   else
     warn "Could not locate the nemoclaw executable."
-    warn "Try running:  npm install -g git+https://github.com/NVIDIA/NemoClaw.git"
+    warn "Try running:  npm install -g git+https://github.com/szaidel-technik/NemoClaw.git"
   fi
 
   error "Installation failed: nemoclaw binary not found."
