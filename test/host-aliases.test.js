@@ -6,12 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-const SETUP_HOST_ALIASES = path.join(
-  import.meta.dirname,
-  "..",
-  "scripts",
-  "setup-host-aliases.sh",
-);
+const SETUP_HOST_ALIASES = path.join(import.meta.dirname, "..", "scripts", "setup-host-aliases.sh");
 const RUNTIME_SH = path.join(import.meta.dirname, "..", "scripts", "lib", "runtime.sh");
 
 describe("setup-host-aliases.sh", () => {
