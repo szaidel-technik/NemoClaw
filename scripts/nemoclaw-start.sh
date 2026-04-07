@@ -415,8 +415,12 @@ PYAUTOPAIR
 
 # ── Proxy environment ────────────────────────────────────────────
 # OpenShell injects HTTP_PROXY/HTTPS_PROXY/NO_PROXY into the sandbox, but its
-# NO_PROXY is limited to 127.0.0.1,localhost,::1 — missing the gateway IP.
+# NO_PROXY is limited to 127.0.0.1,localhost,::1 — missing the gateway IP and
+# the host-local aliases used by NemoClaw presets.
 # The gateway IP itself must bypass the proxy to avoid proxy loops.
+# Host-local aliases must also bypass the proxy so requests like
+# http://host.docker.internal:8765 do not get forwarded to the OpenShell proxy,
+# which can reject them with 403 before they ever reach the host service.
 #
 # Do NOT add inference.local here. OpenShell intentionally routes that hostname
 # through the proxy path; bypassing the proxy forces a direct DNS lookup inside
@@ -428,7 +432,7 @@ PYAUTOPAIR
 PROXY_HOST="${NEMOCLAW_PROXY_HOST:-10.200.0.1}"
 PROXY_PORT="${NEMOCLAW_PROXY_PORT:-3128}"
 _PROXY_URL="http://${PROXY_HOST}:${PROXY_PORT}"
-_NO_PROXY_VAL="localhost,127.0.0.1,::1,${PROXY_HOST}"
+_NO_PROXY_VAL="localhost,127.0.0.1,::1,${PROXY_HOST},host.docker.internal,host.openshell.internal"
 export HTTP_PROXY="$_PROXY_URL"
 export HTTPS_PROXY="$_PROXY_URL"
 export NO_PROXY="$_NO_PROXY_VAL"

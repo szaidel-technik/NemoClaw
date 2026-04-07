@@ -229,12 +229,14 @@ describe("service environment", () => {
       expect(vars.HTTPS_PROXY).toBe("http://10.200.0.1:8080");
     });
 
-    it("NO_PROXY includes loopback only, not inference.local", () => {
+    it("NO_PROXY includes loopback and host-local aliases, but not inference.local", () => {
       const vars = extractProxyVars();
       const noProxy = vars.NO_PROXY.split(",");
       expect(noProxy).toContain("localhost");
       expect(noProxy).toContain("127.0.0.1");
       expect(noProxy).toContain("::1");
+      expect(noProxy).toContain("host.docker.internal");
+      expect(noProxy).toContain("host.openshell.internal");
       expect(noProxy).not.toContain("inference.local");
     });
 
@@ -248,6 +250,8 @@ describe("service environment", () => {
       expect(vars.http_proxy).toBe("http://10.200.0.1:3128");
       expect(vars.https_proxy).toBe("http://10.200.0.1:3128");
       const noProxy = vars.no_proxy.split(",");
+      expect(noProxy).toContain("host.docker.internal");
+      expect(noProxy).toContain("host.openshell.internal");
       expect(noProxy).not.toContain("inference.local");
       expect(noProxy).toContain("10.200.0.1");
     });
@@ -279,10 +283,14 @@ describe("service environment", () => {
         expect(bashrc).toContain("export HTTP_PROXY=");
         expect(bashrc).toContain("export HTTPS_PROXY=");
         expect(bashrc).toContain("export NO_PROXY=");
+        expect(bashrc).toContain("host.docker.internal");
+        expect(bashrc).toContain("host.openshell.internal");
         expect(bashrc).not.toContain("inference.local");
         expect(bashrc).toContain("10.200.0.1");
 
         const profile = readFileSync(join(fakeHome, ".profile"), "utf-8");
+        expect(profile).toContain("host.docker.internal");
+        expect(profile).toContain("host.openshell.internal");
         expect(profile).not.toContain("inference.local");
       } finally {
         try {
@@ -402,10 +410,10 @@ describe("service environment", () => {
           "# nemoclaw-proxy-config begin",
           'export HTTP_PROXY="http://10.200.0.1:3128"',
           'export HTTPS_PROXY="http://10.200.0.1:3128"',
-          'export NO_PROXY="localhost,127.0.0.1,::1,10.200.0.1"',
+          'export NO_PROXY="localhost,127.0.0.1,::1,10.200.0.1,host.docker.internal,host.openshell.internal"',
           'export http_proxy="http://10.200.0.1:3128"',
           'export https_proxy="http://10.200.0.1:3128"',
-          'export no_proxy="localhost,127.0.0.1,::1,10.200.0.1"',
+          'export no_proxy="localhost,127.0.0.1,::1,10.200.0.1,host.docker.internal,host.openshell.internal"',
           "# nemoclaw-proxy-config end",
         ].join("\n");
         writeFileSync(join(fakeHome, ".bashrc"), bashrcContent);
@@ -427,8 +435,12 @@ describe("service environment", () => {
           { encoding: "utf-8" },
         ).trim();
 
-        expect(out).toContain("NO_PROXY=localhost,127.0.0.1,::1,10.200.0.1");
-        expect(out).toContain("no_proxy=localhost,127.0.0.1,::1,10.200.0.1");
+        expect(out).toContain(
+          "NO_PROXY=localhost,127.0.0.1,::1,10.200.0.1,host.docker.internal,host.openshell.internal",
+        );
+        expect(out).toContain(
+          "no_proxy=localhost,127.0.0.1,::1,10.200.0.1,host.docker.internal,host.openshell.internal",
+        );
       } finally {
         try {
           execFileSync("rm", ["-rf", fakeHome]);

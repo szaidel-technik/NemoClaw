@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 const INSTALLER = path.join(import.meta.dirname, "..", "install.sh");
 const CURL_PIPE_INSTALLER = path.join(import.meta.dirname, "..", "install.sh");
 const INSTALLER_PAYLOAD = path.join(import.meta.dirname, "..", "scripts", "install.sh");
-const GITHUB_INSTALL_URL = "git+https://github.com/NVIDIA/NemoClaw.git";
+const GITHUB_INSTALL_URL = "git+https://github.com/szaidel-technik/NemoClaw.git";
 const TEST_SYSTEM_PATH = "/usr/bin:/bin";
 
 function writeExecutable(target, contents) {
@@ -1232,8 +1232,8 @@ fi`,
 });
 
 // ---------------------------------------------------------------------------
-// Release-tag resolution — install.sh should clone the latest GitHub release
-// tag instead of defaulting to main.
+// Release-tag resolution — install.sh should default to the main branch unless
+// explicitly overridden.
 // ---------------------------------------------------------------------------
 
 describe("installer release-tag resolution", () => {
@@ -1254,7 +1254,7 @@ describe("installer release-tag resolution", () => {
     });
   }
 
-  it("defaults to 'latest' with no env override", () => {
+  it("defaults to 'main' with no env override", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-resolve-tag-default-"));
     const fakeBin = path.join(tmp, "bin");
     fs.mkdirSync(fakeBin);
@@ -1264,7 +1264,7 @@ describe("installer release-tag resolution", () => {
     const result = callResolveReleaseTag(fakeBin);
 
     expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe("latest");
+    expect(result.stdout.trim()).toBe("main");
   });
 
   it("uses NEMOCLAW_INSTALL_TAG override", () => {

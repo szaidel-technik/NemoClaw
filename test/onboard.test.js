@@ -2284,6 +2284,7 @@ console.log(JSON.stringify({ exists: providerExistsInGateway("nonexistent") }));
     const repoRoot = path.join(import.meta.dirname, "..");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-extra-create-args-"));
     const fakeBin = path.join(tmpDir, "bin");
+    const openshellBin = path.join(fakeBin, "openshell");
     const scriptPath = path.join(tmpDir, "create-sandbox-extra-args-check.js");
     const onboardPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "onboard.js"));
     const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
@@ -2292,7 +2293,9 @@ console.log(JSON.stringify({ exists: providerExistsInGateway("nonexistent") }));
     const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(openshellBin, "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -2310,6 +2313,8 @@ runner.run = (command, opts = {}) => {
 runner.runCapture = (command) => {
   if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
   if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
+  if (command.includes("sandbox exec 'my-assistant' curl -sf http://localhost:18789/")) return "ok";
+  if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
   return "";
 };
 registry.registerSandbox = () => true;
@@ -2349,9 +2354,9 @@ const { createSandbox } = require(${onboardPath});
         ...process.env,
         HOME: tmpDir,
         PATH: `${fakeBin}:${process.env.PATH || ""}`,
+        NEMOCLAW_OPENSHELL_BIN: openshellBin,
         NEMOCLAW_NON_INTERACTIVE: "1",
-        NEMOCLAW_SANDBOX_CREATE_ARGS_JSON:
-          '["--forward","3000"]',
+        NEMOCLAW_SANDBOX_CREATE_ARGS_JSON: '["--forward","3000"]',
       },
     });
 
@@ -2365,7 +2370,9 @@ const { createSandbox } = require(${onboardPath});
     assert.ok(payloadLine, `expected JSON payload in stdout:\n${result.stdout}`);
     const payload = JSON.parse(payloadLine);
     assert.equal(payload.sandboxName, "my-assistant");
-    const createCommand = payload.commands.find((entry) => entry.command.includes("'sandbox' 'create'"));
+    const createCommand = payload.commands.find((entry) =>
+      entry.command.includes("'sandbox' 'create'"),
+    );
     assert.ok(createCommand, "expected sandbox create command");
     assert.match(createCommand.command, /'--forward'/);
     assert.match(createCommand.command, /'3000'/);
@@ -2375,6 +2382,7 @@ const { createSandbox } = require(${onboardPath});
     const repoRoot = path.join(import.meta.dirname, "..");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-create-ready-"));
     const fakeBin = path.join(tmpDir, "bin");
+    const openshellBin = path.join(fakeBin, "openshell");
     const scriptPath = path.join(tmpDir, "create-sandbox-ready-check.js");
     const payloadPath = path.join(tmpDir, "payload.json");
     const onboardPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "onboard.js"));
@@ -2384,7 +2392,7 @@ const { createSandbox } = require(${onboardPath});
     const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+    fs.writeFileSync(openshellBin, "#!/usr/bin/env bash\nexit 0\n", {
       mode: 0o755,
     });
 
@@ -2479,6 +2487,7 @@ const { createSandbox } = require(${onboardPath});
         HOME: tmpDir,
         PATH: `${fakeBin}:${process.env.PATH || ""}`,
         NEMOCLAW_NON_INTERACTIVE: "1",
+        NEMOCLAW_OPENSHELL_BIN: openshellBin,
       },
       timeout: 15000,
     });
@@ -2545,6 +2554,7 @@ const { createSandbox } = require(${onboardPath});
         ...process.env,
         HOME: tmpDir,
         PATH: `${fakeBin}:${process.env.PATH || ""}`,
+        NEMOCLAW_OPENSHELL_BIN: openshellBin,
         NEMOCLAW_NON_INTERACTIVE: "1",
       },
     });
