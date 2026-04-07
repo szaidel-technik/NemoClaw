@@ -1,12 +1,14 @@
 preset:
   name: local-host
-  description: "Allow sandbox access to host-local services on host.docker.internal"
+  description: "Allow sandbox access to host-local services on host.docker.internal and host.openshell.internal"
 
 network_policies:
   local_host:
     name: local_host
     endpoints:
       - host: host.docker.internal
+        access: full
+      - host: host.openshell.internal
         access: full
     binaries:
       - { path: /usr/bin/curl }

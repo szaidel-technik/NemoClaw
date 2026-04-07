@@ -49,8 +49,30 @@ function loadPreset(name) {
 }
 
 function getPresetEndpoints(content) {
+  try {
+    const parsed = YAML.parse(content);
+    const networkPolicies = parsed && parsed.network_policies;
+    if (!networkPolicies || typeof networkPolicies !== "object") return [];
+
+    const hosts = [];
+    for (const policy of Object.values(networkPolicies)) {
+      if (!policy || typeof policy !== "object") continue;
+      const endpoints = Array.isArray(policy.endpoints) ? policy.endpoints : [];
+      for (const endpoint of endpoints) {
+        if (!endpoint || typeof endpoint !== "object") continue;
+        if (typeof endpoint.host === "string" && endpoint.host.trim()) {
+          hosts.push(endpoint.host.trim());
+        }
+      }
+    }
+    if (hosts.length > 0) return hosts;
+  } catch {
+    /* fall through to regex fallback */
+  }
+
+  // Backward-compatible fallback for lightweight snippets used in tests.
   const hosts = [];
-  const regex = /host:\s*([^\s,}]+)/g;
+  const regex = /(?:^|\n)\s*-?\s*host:\s*([^\s,}]+)/g;
   let match;
   while ((match = regex.exec(content)) !== null) {
     hosts.push(match[1].replace(/^["']|["']$/g, ""));
