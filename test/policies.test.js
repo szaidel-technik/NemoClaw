@@ -7,9 +7,9 @@ import policies from "../bin/lib/policies";
 
 describe("policies", () => {
   describe("listPresets", () => {
-    it("returns all 9 presets", () => {
+    it("returns all 10 presets", () => {
       const presets = policies.listPresets();
-      expect(presets.length).toBe(9);
+      expect(presets.length).toBe(10);
     });
 
     it("each preset has name and description", () => {
@@ -29,6 +29,7 @@ describe("policies", () => {
         "docker",
         "huggingface",
         "jira",
+        "local-host",
         "npm",
         "outlook",
         "pypi",
@@ -70,6 +71,12 @@ describe("policies", () => {
       const content = policies.loadPreset("telegram");
       const hosts = policies.getPresetEndpoints(content);
       expect(hosts).toEqual(["api.telegram.org"]);
+    });
+
+    it("local-host preset uses quoted wildcard port", () => {
+      const content = policies.loadPreset("local-host");
+      expect(content).toBeTruthy();
+      expect(content.includes('port: "*"')).toBeTruthy();
     });
 
     it("every preset has at least one endpoint", () => {
